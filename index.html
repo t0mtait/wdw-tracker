@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>Disney World Wait Times</title>
+    <script>
+        // Configure Tailwind dark mode before loading
+        window.tailwindConfig = {
+            darkMode: 'class',
+            corePlugins: {
+                preflight: false
+            }
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Force Tailwind to recalculate on dark mode changes
+        const observer = new MutationObserver(() => {
+            if (window.tailwind) {
+                window.tailwind.getComputedStyle && window.tailwind.recompile?.();
+            }
+        });
+        
+        // Watch for dark class changes on html element
+        const html = document.documentElement;
+        observer.observe(html, { 
+            attributes: true, 
+            attributeFilter: ['class']
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        // Dark mode script to prevent flash
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (savedTheme === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+    <style>
+        * {
+            font-family: 'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .ride-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .ride-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .dark .ride-card:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+        
+        .wait-time-badge {
+            font-weight: 700;
+            font-size: 1.75rem;
+            letter-spacing: -0.02em;
+        }
+        
+        .status-open { @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100; }
+        .status-closed { @apply bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-100; }
+        .status-delayed { @apply bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100; }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        .dark ::-webkit-scrollbar-thumb {
+            background: #475569;
+        }
+        
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+        
+        /* Chart styling */
+        .chart-container {
+            @apply bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-xl p-5 shadow-sm dark:shadow-md border border-slate-200 dark:border-slate-700;
+            position: relative;
+        }
+
+        /* Explicit dark mode chart styling */
+        html.dark .chart-container {
+            background: linear-gradient(to bottom right, #1e293b, #0f172a) !important;
+            border-color: #334155 !important;
+        }
+
+        /* Force dark background on chart section containers */
+        html.dark .bg-slate-50 {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+
+        html.dark .bg-slate-50 h3 {
+            color: #ffffff !important;
+        }
+
+        html.dark .bg-slate-50 p {
+            color: #ffffff !important;
+        }
+
+        /* Explicit dark mode overrides for better compatibility */
+        html.dark {
+            color-scheme: dark;
+        }
+        
+        html.dark body {
+            background: linear-gradient(to bottom right, #0f172a, #0f172a) !important;
+        }
+
+        /* Dark mode header/nav */
+        html.dark .sticky {
+            background-color: #030712 !important;
+            border-color: #334155 !important;
+        }
+
+        /* Dark mode recommended card */
+        html.dark #recommendedCard {
+            background: linear-gradient(to bottom right, #1e293b, #0f172a) !important;
+            border-color: #334155 !important;
+        }
+
+        html.dark #recommendedCard h3 {
+            color: #ffffff !important;
+        }
+
+        html.dark #recommendedList > div {
+            background-color: #334155 !important;
+            color: #ffffff !important;
+        }
+
+        html.dark #recommendedList > div p {
+            color: #ffffff !important;
+        }
+
+        html.dark #recommendedList > div .text-xs {
+            color: #cbd5e1 !important;
+        }
+
+        /* Dark mode park cards */
+        html.dark [class*="ride-card"] {
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            border-color: #334155 !important;
+        }
+
+        html.dark [class*="ride-card"]:nth-child(even) {
+            background-color: #0f172a !important;
+        }
+
+        html.dark [class*="ride-card"] p {
+            color: #ffffff !important;
+        }
+
+        html.dark [class*="ride-card"] .text-xs {
+            color: #cbd5e1 !important;
+        }
+
+        /* Ensure park containers are dark */
+        html.dark [class*="space-y-6"] > div {
+            background-color: #1a1f2e !important;
+            border-color: #334155 !important;
+        }
+
+        /* Keep last updated div transparent */
+        html.dark .space-y-6 > div:first-child {
+            background-color: transparent !important;
+            border-color: transparent !important;
+        }
+
+        /* Dark mode text everywhere */
+        html.dark {
+            color: #f1f5f9;
+        }
+
+        html.dark .text-slate-900,
+        html.dark .text-gray-700 {
+            color: #f1f5f9 !important;
+        }
+
+        html.dark .text-slate-600,
+        html.dark .text-gray-600 {
+            color: #cbd5e1 !important;
+        }
+
+        /* Dark mode park filter buttons */
+        html.dark .park-filter:not([class*="from-indigo"]) {
+            background-color: #0f172a !important;
+            color: #f1f5f9 !important;
+            border: 1px solid #334155 !important;
+        }
+
+        html.dark .park-filter:not([class*="from-indigo"]):hover {
+            background-color: #1a1f2e !important;
+        }
+
+        /* Dark mode toggle button */
+        html.dark #darkModeBtn {
+            background-color: #0f172a !important;
+            color: #f1f5f9 !important;
+            border: 1px solid #334155 !important;
+        }
+
+        html.dark #darkModeBtn:hover {
+            background-color: #1a1f2e !important;
+        }
+    </style>
+</head>
+
+
+
+<body class="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-950 dark:to-slate-900 transition-colors">
+    <div class="min-h-screen dark:text-white">
+        <!-- Header -->
+        <div class="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/95 backdrop-blur-md shadow-sm border-b border-gray-100 dark:border-slate-700">
+            <div class="max-w-2xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400 bg-clip-text text-transparent">🏰 WDW Queue Tracker</h1>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Made by @t0mtait</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="darkModeBtn" class="bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 p-3 rounded-full hover:bg-gray-300 dark:hover:bg-slate-700 transition">
+                            <svg id="sunIcon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 18a6 6 0 100-12 6 6 0 000 12zM12 2v4m0 12v4m10-10h-4M4 12H0m16.485-8.485l-2.828 2.828m-7.314 7.314l-2.828 2.828m11.314 0l2.828 2.828m-7.314-7.314l2.828-2.828"/>
+                            </svg>
+                            <svg id="moonIcon" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                            </svg>
+                        </button>
+                        <button id="refreshBtn" class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-3 rounded-full transition shadow-lg hover:shadow-xl">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="mt-4 flex gap-2 overflow-x-auto pb-2">
+                    <button class="park-filter px-5 py-3 rounded-full text-base font-medium whitespace-nowrap bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md hover:shadow-lg transition" data-park="all">All</button>
+                    <button class="park-filter px-5 py-3 rounded-full text-base font-medium whitespace-nowrap bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition" data-park="magic-kingdom" title="Magic Kingdom">🏰</button>
+                    <button class="park-filter px-5 py-3 rounded-full text-base font-medium whitespace-nowrap bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition" data-park="epcot" title="EPCOT">🌐</button>
+                    <button class="park-filter px-5 py-3 rounded-full text-base font-medium whitespace-nowrap bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition" data-park="hollywood" title="Hollywood Studios">🎬</button>
+                    <button class="park-filter px-5 py-3 rounded-full text-base font-medium whitespace-nowrap bg-gray-100 dark:bg-slate-900 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-slate-700 transition" data-park="animal-kingdom" title="Animal Kingdom">🌳</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="max-w-2xl mx-auto px-4 py-16 flex flex-col items-center justify-center">
+            <div class="flex justify-center items-center space-x-2 mb-4">
+                <div class="w-3 h-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full animate-bounce"></div>
+                <div class="w-3 h-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full animate-bounce" style="animation-delay: 0.2s;"></div>
+                <div class="w-3 h-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full animate-bounce" style="animation-delay: 0.4s;"></div>
+            </div>
+            <p class="text-center text-gray-600 dark:text-gray-400 font-medium">Loading wait times...</p>
+        </div>
+
+        <!-- Content -->
+        <div id="contentState" class="hidden">
+            <div class="max-w-2xl mx-auto px-4 py-8 space-y-6">
+                <!-- Last Updated -->
+                <div class="text-center text-xs text-gray-600 dark:text-gray-400 font-medium bg-transparent">
+                    Last updated: <span id="lastUpdated" class="text-indigo-600 dark:text-indigo-400 bg-transparent">just now</span>
+                </div>
+
+                <!-- Recommended Attractions Card -->
+                <div id="recommendedCard" class="hidden bg-gradient-to-br from-amber-50 to-orange-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl p-6 border-2 border-amber-200 dark:border-slate-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-amber-900 dark:text-white flex items-center gap-2">
+                            <span class="text-2xl">⭐</span>
+                            Best Times Now
+                        </h3>
+                        <button id="viewMoreBtn" class="px-4 py-2 text-base font-medium bg-amber-200 dark:bg-amber-700 text-amber-900 dark:text-amber-100 rounded-lg hover:bg-amber-300 dark:hover:bg-amber-600 transition">
+                            View More
+                        </button>
+                    </div>
+                    <div id="recommendedList" class="space-y-3">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+
+                <!-- Parks Container -->
+                <div id="parksContainer" class="space-y-6">
+                    <!-- Dynamically populated -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="hidden text-center py-16">
+                    <p class="text-gray-600 dark:text-gray-400 text-lg font-medium">No attractions found</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="hidden max-w-2xl mx-auto px-4 py-8">
+            <div class="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-xl p-6 shadow-sm">
+                <h3 class="font-semibold text-rose-800 dark:text-rose-300 mb-2">Unable to Load Wait Times</h3>
+                <p class="text-rose-700 dark:text-rose-200 text-sm mb-4" id="errorMessage"></p>
+                <button id="retryBtn" class="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 text-white py-3 rounded-lg font-medium text-base transition shadow-md hover:shadow-lg">
+                    Try Again
+                </button>
+            </div>
+        </div>
+
+        <!-- View More Modal -->
+        <div id="viewMoreModal" class="hidden fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-end backdrop-blur-md">
+            <div class="bg-white dark:bg-slate-800 w-full rounded-t-3xl p-8 max-h-[90vh] overflow-y-auto shadow-2xl dark:border-t dark:border-slate-700">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">All Attractions Below Average</h2>
+                    <button id="closeViewMoreBtn" class="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full p-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="viewMoreList" class="space-y-2">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Attraction Detail Modal -->
+        <div id="attractionModal" class="hidden fixed inset-0 bg-black/60 dark:bg-black/80 z-50 flex items-end backdrop-blur-md">
+            <div class="bg-white dark:bg-slate-800 w-full rounded-t-3xl p-8 max-h-[90vh] overflow-y-auto shadow-2xl dark:border-t dark:border-slate-700">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 id="modalAttractionName" class="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400 bg-clip-text text-transparent"></h2>
+                        <p id="modalAttractionLocation" class="text-sm text-slate-600 dark:text-slate-400 mt-2 font-medium"></p>
+                    </div>
+                    <button id="closeModalBtn" class="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full p-2">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="space-y-10">
+                    <!-- Daily Chart -->
+                    <div class="bg-slate-50 dark:bg-slate-700 rounded-2xl p-6 border dark:border-slate-600">
+                        <div class="flex items-center justify-between mb-5">
+                            <div class="flex items-center gap-2">
+                                <button id="prevDayBtn" class="px-3 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">←</button>
+                                <h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center">
+                                    <span class="w-2 h-2 bg-indigo-600 dark:bg-indigo-400 rounded-full mr-3"></span>
+                                    <span id="dailyChartDate">Today's Wait Times</span>
+                                </h3>
+                                <button id="nextDayBtn" class="px-3 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">→</button>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="dailyChart" height="80"></canvas>
+                        </div>
+                        <p id="dailyStats" class="text-xs text-slate-600 dark:text-slate-400 mt-4 font-medium"></p>
+                    </div>
+
+                    <!-- Weekly Chart -->
+                    <div class="bg-slate-50 dark:bg-slate-700 rounded-2xl p-6 border dark:border-slate-600">
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white mb-5 flex items-center">
+                            <span class="w-2 h-2 bg-purple-600 dark:bg-purple-400 rounded-full mr-3"></span>
+                            Last 7 Days
+                        </h3>
+                        <div class="chart-container">
+                            <canvas id="weeklyChart" height="80"></canvas>
+                        </div>
+                        <p id="weeklyStats" class="text-xs text-slate-600 dark:text-slate-400 mt-4 font-medium"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/wait-times';
+        const RIDE_AVERAGES_URL = '/api/ride-averages';
+        let allData = null;
+        let currentFilter = 'all';
+        const rideAveragesCache = {}; // Cache for ride averages
+
+        // Blacklist of attraction names to hide from UI
+        const attractionBlacklist = [
+            'Kidcot Fun Stops',
+            'American Heritage Gallery',
+            'Palais du Cinéma',
+            'ImageWorks - The "What If" Labs',
+            'Bijutsu-kan Gallery',
+            'Gallery of Arts and History',
+            'House of the Whispering Willows',
+            'Mexico Folk Art Gallery',
+            'Stave Church Gallery',
+            'Project Tomorrow: Inventing the Wonders of the Future',
+            'Meet Beloved Disney Pals at Mickey & Friends',
+            'Disney and Pixar Short Film Festival',
+            'Advanced Training Lab',
+            'Awesome Planet',
+            'Bruce\'s Shark World',
+            'Journey of Water, Inspired by Moana',
+            'SeaBase Aquarium',
+            'Turtle Talk With Crush',
+            'The Seas with Nemo & Friends',
+            'Meet Anna and Elsa at Royal Sommerhus',
+            'A Pirate\'s Adventure ~ Treasures of the Seven Seas',
+            'Swiss Family Treehouse',
+            'The Magic Carpets of Aladdin',
+            'Walt Disney\'s Enchanted Tiki Room',
+            'Casey Jr. Splash \'N\' Soak Station',
+            'Cinderella Castle',
+            'Dumbo the Flying Elephant',
+            'Enchanted Tales with Belle',
+            'Mad Tea Party',
+            'Meet Ariel at Her Grotto',
+            'Meet Cinderella and a Visiting Princess at Princess Fairytale Hall',
+            'Meet Daring Disney Pals as Circus Stars at Pete\'s Silly Sideshow',
+            'Meet Dashing Disney Pals as Circus Stars at Pete\'s Silly Sideshow',
+            'Meet Princess Tiana and a Visiting Princess at Princess Fairytale Hall',
+            'Prince Charming Regal Carrousel',
+            'Country Bear Musical Jamboree',
+            'The Hall of Presidents',
+            'Main Street Vehicles',
+            'Meet Mickey at Town Square Theater',
+            'Meet Favorite Disney Pals at Adventurers Outpost',
+            'Festival of the Lion King',
+            'Gorilla Falls Exploration Trail',
+            'Feathered Friends in Flight!',
+            'Dino-Sue',
+            'Finding Nemo: The Big Blue... and Beyond!',
+            'Discovery Island Trails',
+            'Meet Moana at Character Landing',
+            'Tree of Life',
+            'Affection Section',
+            'Animal Care at Conservation Station',
+            'The Animation Experience at Conservation Station',
+            'The Oasis Exhibits',
+            'Wilderness Explorers',
+            'Meet Ariel at Walt Disney Presents',
+            'Alien Swirling Saucers',
+            'Test Track Presented by Chevrolet Single Rider',
+            'Remy\'s Ratatouille Adventure Single Rider',
+            'Canada Far and Wide in Circle-Vision 360',
+            'The Little Mermaid – A Musical Adventure – New!',
+            'Walt Disney Presents',
+            'Meet Disney Stars at Red Carpet Dreams',
+            'For the First Time in Forever: A Frozen Sing-Along Celebration',
+            'Meet Olaf at Celebrity Spotlight',
+            'Vacation Fun - An Original Animated Short with Mickey & Minnie',
+            'Meet Edna Mode at the Edna Mode Experience',
+            'Millennium Falcon: Smugglers Run Single Rider',
+            'Star Wars: Rise of the Resistance Single Rider',
+            'Beauty and the Beast – Live on Stage',
+            'Rock \'n\' Roller Coaster Starring Aerosmith Single Rider',
+            'Expedition Everest - Legend of the Forbidden Mountain Single Rider'
+        ];
+
+        // Park name mapping
+        const parkNames = {
+            'magic-kingdom': 'Magic Kingdom',
+            'epcot': 'EPCOT',
+            'hollywood': 'Hollywood Studios',
+            'animal-kingdom': 'Animal Kingdom'
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set initial dark mode icon first
+            updateDarkModeIcon();
+            
+            // Dark mode toggle
+            document.getElementById('darkModeBtn').addEventListener('click', () => {
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.theme = isDark ? 'dark' : 'light';
+                
+                // Force style recalculation
+                document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+                
+                // Update inline styles on all cards based on dark mode state
+                updateAllCardStyles(isDark);
+                
+                // Trigger Tailwind style recalculation by forcing a reflow
+                void document.documentElement.offsetHeight;
+                
+                updateDarkModeIcon();
+            });
+            
+            loadWaitTimes();
+            
+            document.getElementById('refreshBtn').addEventListener('click', loadWaitTimes);
+            document.getElementById('retryBtn').addEventListener('click', loadWaitTimes);
+            document.getElementById('closeModalBtn').addEventListener('click', () => {
+                document.getElementById('attractionModal').classList.add('hidden');
+            });
+            
+            // Close modal on backdrop click
+            document.getElementById('attractionModal').addEventListener('click', (e) => {
+                if (e.target.id === 'attractionModal') {
+                    document.getElementById('attractionModal').classList.add('hidden');
+                }
+            });
+
+            // View More button
+            document.getElementById('viewMoreBtn').addEventListener('click', () => {
+                showAllRecommendedAttractions();
+            });
+
+            // Close View More modal
+            document.getElementById('closeViewMoreBtn').addEventListener('click', () => {
+                document.getElementById('viewMoreModal').classList.add('hidden');
+            });
+
+            // Close View More modal on backdrop click
+            document.getElementById('viewMoreModal').addEventListener('click', (e) => {
+                if (e.target.id === 'viewMoreModal') {
+                    document.getElementById('viewMoreModal').classList.add('hidden');
+                }
+            });
+            
+            document.querySelectorAll('.park-filter').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.park-filter').forEach(b => {
+                        b.classList.remove('bg-gradient-to-r', 'from-indigo-600', 'to-purple-600', 'text-white', 'shadow-md', 'shadow-lg');
+                        b.classList.add('bg-gray-100', 'dark:bg-slate-900', 'text-gray-700', 'dark:text-gray-300');
+                    });
+                    e.target.classList.remove('bg-gray-100', 'dark:bg-slate-900', 'text-gray-700', 'dark:text-gray-300');
+                    e.target.classList.add('bg-gradient-to-r', 'from-indigo-600', 'to-purple-600', 'text-white', 'shadow-md', 'shadow-lg');
+                    
+                    currentFilter = e.target.dataset.park;
+                    renderData();
+                });
+            });
+        });
+
+        async function loadWaitTimes() {
+            try {
+                showLoading();
+                
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                allData = await response.json();
+                console.log('Loaded data:', allData); // Debug log
+                
+                if (!Array.isArray(allData)) {
+                    allData = [allData]; // Wrap single object in array
+                }
+                
+                updateLastUpdated();
+                renderData();
+                showContent();
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError(error.message);
+            }
+        }
+
+        function renderData() {
+            const container = document.getElementById('parksContainer');
+            container.innerHTML = '';
+
+            if (!allData || !Array.isArray(allData) || allData.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                document.getElementById('recommendedCard').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('emptyState').classList.add('hidden');
+
+            allData.forEach(park => {
+                // Filter by selected park
+                if (currentFilter !== 'all') {
+                    const parkKey = getParkKey(park.name);
+                    if (parkKey !== currentFilter) return;
+                }
+
+                const parkElement = createParkElement(park);
+                if (parkElement) container.appendChild(parkElement);
+            });
+
+            // Show recommended attractions after a short delay to allow cards to load
+            setTimeout(() => {
+                const recommended = getRecommendedAttractions();
+                if (recommended.length > 0) {
+                    document.getElementById('recommendedCard').classList.remove('hidden');
+                    const recommendedList = document.getElementById('recommendedList');
+                    recommendedList.innerHTML = '';
+                    
+                    recommended.forEach((attr, index) => {
+                        const item = document.createElement('div');
+                        item.className = 'bg-white dark:bg-slate-700 rounded-lg p-3 cursor-pointer hover:shadow-md dark:hover:shadow-lg transition';
+                        
+                        // Determine color based on improvement percentage
+                        let waitTimeColor, improvementColor;
+                        if (attr.improvementPercent >= 50) {
+                            // Excellent improvement (50%+)
+                            waitTimeColor = { light: '#16a34a', dark: '#4ade80' }; // green
+                            improvementColor = { light: '#16a34a', dark: '#4ade80' };
+                        } else if (attr.improvementPercent >= 25) {
+                            // Good improvement (25-49%)
+                            waitTimeColor = { light: '#059669', dark: '#6ee7b7' }; // emerald
+                            improvementColor = { light: '#059669', dark: '#6ee7b7' };
+                        } else {
+                            // Moderate improvement (0-24%)
+                            waitTimeColor = { light: '#ca8a04', dark: '#facc15' }; // yellow
+                            improvementColor = { light: '#ca8a04', dark: '#facc15' };
+                        }
+                        
+                        const isDark = document.documentElement.classList.contains('dark');
+                        const waitColor = isDark ? waitTimeColor.dark : waitTimeColor.light;
+                        const impColor = isDark ? improvementColor.dark : improvementColor.light;
+                        
+                        item.innerHTML = `
+                            <div class="flex items-center justify-between">
+                                <div class="flex-1">
+                                    <p class="font-semibold text-amber-900 dark:text-white text-sm">${index + 1}. ${attr.ride.name}</p>
+                                    <p class="text-xs text-amber-700 dark:text-slate-300 mt-1">${attr.landName} • ${attr.parkName}</p>
+                                </div>
+                                <div class="text-right ml-3">
+                                    <p class="font-bold text-sm" style="color: ${waitColor};">${attr.currentWait}min</p>
+                                    <p class="text-xs" style="color: ${impColor};">↓${attr.improvementPercent.toFixed(0)}%</p>
+                                </div>
+                            </div>
+                        `;
+                        item.addEventListener('click', () => {
+                            showAttractionDetail(attr.ride, attr.parkName, attr.landName);
+                        });
+                        recommendedList.appendChild(item);
+                    });
+                    
+                    // Apply dark mode styles if needed
+                    updateAllCardStyles(document.documentElement.classList.contains('dark'));
+                } else {
+                    document.getElementById('recommendedCard').classList.add('hidden');
+                }
+            }, 500);
+        }
+
+        function getParkKey(parkName) {
+            const name = parkName.toLowerCase();
+            if (name.includes('magic kingdom')) return 'magic-kingdom';
+            if (name.includes('epcot')) return 'epcot';
+            if (name.includes('hollywood') || name.includes('studios')) return 'hollywood';
+            if (name.includes('animal')) return 'animal-kingdom';
+            return null;
+        }
+
+        function createParkElement(park) {
+            // Handle both response formats
+            const lands = park.lands || park.lands || [];
+            if (!lands || lands.length === 0) return null;
+
+            const parkDiv = document.createElement('div');
+            parkDiv.className = 'bg-white dark:bg-slate-850 rounded-2xl shadow-md dark:shadow-lg dark:border dark:border-slate-700 overflow-hidden transition-all';
+
+            // Park Header
+            const headerDiv = document.createElement('div');
+            headerDiv.className = 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-500 dark:via-purple-500 dark:to-pink-500 text-white p-6';
+            headerDiv.innerHTML = `
+                <h2 class="text-xl font-semibold">${park.name}</h2>
+                <p class="text-indigo-100 text-sm mt-1">${lands.length} Areas</p>
+            `;
+            parkDiv.appendChild(headerDiv);
+
+            // Lands and Attractions
+            const landsDiv = document.createElement('div');
+            landsDiv.className = 'divide-y dark:divide-slate-700';
+
+            let attractionCount = 0;
+            lands.forEach(land => {
+                // API uses 'rides' instead of 'attractions'
+                const rides = land.rides || land.attractions || [];
+                if (!rides || rides.length === 0) return;
+
+                // Filter out blacklisted rides
+                const visibleRides = rides.filter(ride => !attractionBlacklist.includes(ride.name));
+                
+                // Skip this land if no visible rides remain
+                if (visibleRides.length === 0) return;
+
+                const landSection = document.createElement('div');
+                landSection.className = 'p-6 border-b dark:border-slate-700 last:border-b-0';
+
+                const landTitle = document.createElement('h3');
+                landTitle.className = 'text-base font-semibold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2';
+                landTitle.innerHTML = `<span class="text-xl">📍</span><span>${land.name}</span>`;
+                landSection.appendChild(landTitle);
+
+                const attractionsDiv = document.createElement('div');
+                attractionsDiv.className = 'space-y-2';
+
+                visibleRides.forEach((ride, rideIndex) => {
+                    const card = createAttractionCard(ride, park.name, land.name, rideIndex);
+                    // card is a Promise, so append a placeholder and load async
+                    card.then(cardElement => {
+                        attractionsDiv.appendChild(cardElement);
+                    });
+                    attractionCount++;
+                });
+
+                landSection.appendChild(attractionsDiv);
+                landsDiv.appendChild(landSection);
+            });
+
+            if (attractionCount === 0) return null;
+
+            parkDiv.appendChild(landsDiv);
+            return parkDiv;
+        }
+
+        async function createAttractionCard(ride, parkName, landName, index = 0) {
+            const card = document.createElement('div');
+            const bgColor = index % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-100 dark:bg-slate-900';
+            card.className = `ride-card ${bgColor} rounded-lg p-2 hover:shadow-md dark:hover:shadow-lg dark:border dark:border-slate-600 active:scale-95 cursor-pointer`;
+            
+            // Store index for later dark mode styling
+            card.dataset.cardIndex = index;
+
+            const waitTime = ride.wait_time || 0;
+            const isOpen = ride.is_open !== false; // Default to open if not specified
+            
+            // Determine status color
+            let statusClass = 'status-open';
+            let statusText = 'OPEN';
+            if (!isOpen) {
+                statusClass = 'status-closed';
+                statusText = 'CLOSED';
+            }
+
+            const left = document.createElement('div');
+            left.className = 'flex-1';
+            left.innerHTML = `
+                <p class="font-semibold text-slate-900 dark:text-slate-100 text-sm">${ride.name}</p>
+                <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">Status: <span class="font-medium ${statusClass} px-1.5 py-0.5 rounded inline-block text-xs">${statusText}</span></p>
+            `;
+
+            const right = document.createElement('div');
+            right.className = 'text-right ml-2 flex-shrink-0';
+            
+            if (!isOpen) {
+                right.innerHTML = `<p class="text-slate-500 dark:text-slate-400 font-bold text-sm">CLOSED</p>`;
+            } else {
+                let averageHTML = '';
+                try {
+                    const cacheKey = `${parkName}|${landName}|${ride.id}`;
+                    let averages = rideAveragesCache[cacheKey];
+                    
+                    if (!averages) {
+                        const response = await fetch(`${RIDE_AVERAGES_URL}?rideId=${ride.id}&parkName=${parkName}&landName=${landName}`);
+                        if (response.ok) {
+                            averages = await response.json();
+                            rideAveragesCache[cacheKey] = averages;
+                        }
+                    }
+                    
+                    if (averages) {
+                        let avgItems = [];
+                        if (averages.today_avg !== null) {
+                            const dailyColor = averages.today_avg > waitTime ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                            avgItems.push(`<span class="font-bold ${dailyColor}">D:${averages.today_avg}m</span>`);
+                        }
+                        if (averages.weekly_avg !== null) {
+                            const weeklyColor = averages.weekly_avg > waitTime ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                            avgItems.push(`<span class="font-bold ${weeklyColor}">W:${averages.weekly_avg}m</span>`);
+                        }
+                        if (avgItems.length > 0) {
+                            averageHTML = `<p class="text-sm space-x-1 font-semibold">${avgItems.join('&nbsp;&nbsp;')}</p>`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error fetching ride averages:', error);
+                }
+                
+                right.innerHTML = `
+                    <div class="flex flex-col items-end gap-0">
+                        <p class="text-indigo-600 dark:text-indigo-400 font-bold text-2xl">${waitTime}</p>
+                        <p class="text-sm text-slate-600 dark:text-slate-400 leading-tight">min</p>
+                        ${averageHTML}
+                    </div>
+                `;
+            }
+
+            card.appendChild(left);
+            card.appendChild(right);
+            
+            // Add click handler to show detailed charts
+            card.addEventListener('click', () => {
+                showAttractionDetail(ride, parkName, landName);
+            });
+            
+            return card;
+        }
+
+        /**
+         * Show attraction detail modal with charts
+         */
+        async function showAttractionDetail(ride, parkName, landName) {
+            const modal = document.getElementById('attractionModal');
+            document.getElementById('modalAttractionName').textContent = ride.name;
+            document.getElementById('modalAttractionLocation').textContent = `${landName} • ${parkName}`;
+            
+            modal.classList.remove('hidden');
+            
+            try {
+                const response = await fetch(`${RIDE_AVERAGES_URL}?rideId=${ride.id}&parkName=${parkName}&landName=${landName}`);
+                if (!response.ok) throw new Error('Failed to fetch data');
+                
+                const data = await response.json();
+                
+                // Fetch detailed history for charts
+                const historyResponse = await fetch(`/api/ride-history?rideId=${ride.id}&parkName=${parkName}&landName=${landName}`);
+                if (historyResponse.ok) {
+                    const history = await historyResponse.json();
+                    
+                    // Store history and current selection in modal
+                    window.currentModalHistory = history;
+                    window.currentModalData = data;
+                    window.currentSelectedDate = new Date().toISOString().split('T')[0];
+                    window.currentRideId = ride.id;
+                    
+                    // Set up date navigation
+                    setupDateNavigation(history);
+                    
+                    // Create charts with today's data
+                    createCharts(history, data, window.currentSelectedDate);
+                }
+            } catch (error) {
+                console.error('Error loading attraction details:', error);
+            }
+        }
+
+        function setupDateNavigation(history) {
+            const prevBtn = document.getElementById('prevDayBtn');
+            const nextBtn = document.getElementById('nextDayBtn');
+            
+            prevBtn.onclick = () => {
+                const currentDate = new Date(window.currentSelectedDate);
+                currentDate.setDate(currentDate.getDate() - 1);
+                window.currentSelectedDate = currentDate.toISOString().split('T')[0];
+                createCharts(window.currentModalHistory, window.currentModalData, window.currentSelectedDate);
+            };
+            
+            nextBtn.onclick = () => {
+                const today = new Date().toISOString().split('T')[0];
+                if (window.currentSelectedDate < today) {
+                    const currentDate = new Date(window.currentSelectedDate);
+                    currentDate.setDate(currentDate.getDate() + 1);
+                    window.currentSelectedDate = currentDate.toISOString().split('T')[0];
+                    createCharts(window.currentModalHistory, window.currentModalData, window.currentSelectedDate);
+                }
+            };
+        }
+
+        /**
+         * Create and display charts
+         */
+        function createCharts(history, averages, selectedDate = null) {
+            // Prepare daily data
+            const today = new Date().toISOString().split('T')[0];
+            const dateToDisplay = selectedDate || today;
+            
+            // Get data for selected date
+            let chartData = [];
+            if (dateToDisplay === today) {
+                chartData = history.today || [];
+            } else if (history.historical && history.historical[dateToDisplay]) {
+                chartData = history.historical[dateToDisplay] || [];
+            }
+            
+            // Detect dark mode
+            const isDark = document.documentElement.classList.contains('dark');
+            const textColor = isDark ? '#ffffff' : '#334155';
+            const gridColor = isDark ? '#334155' : '#e2e8f0';
+            
+            // Update the daily chart date display
+            const dateDisplayElement = document.getElementById('dailyChartDate');
+            if (dateDisplayElement) {
+                if (dateToDisplay === today) {
+                    dateDisplayElement.textContent = "Today's Wait Times";
+                } else {
+                    const displayDate = new Date(dateToDisplay + 'T00:00:00');
+                    const dateStr = displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    dateDisplayElement.textContent = `Wait Times - ${dateStr}`;
+                }
+            }
+            
+            // Disable/enable navigation buttons
+            const prevBtn = document.getElementById('prevDayBtn');
+            const nextBtn = document.getElementById('nextDayBtn');
+            if (prevBtn && nextBtn) {
+                prevBtn.disabled = !history.historical || Object.keys(history.historical || {}).length === 0;
+                nextBtn.disabled = dateToDisplay >= today;
+                if (prevBtn.disabled) prevBtn.style.opacity = '0.5';
+                else prevBtn.style.opacity = '1';
+                if (nextBtn.disabled) nextBtn.style.opacity = '0.5';
+                else nextBtn.style.opacity = '1';
+            }
+            
+            // Create daily chart
+            const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+            if (window.dailyChartInstance) {
+                window.dailyChartInstance.destroy();
+            }
+            
+            window.dailyChartInstance = new Chart(dailyCtx, {
+                type: 'line',
+                data: {
+                    labels: chartData.map((d, i) => {
+                        const date = new Date(d.timestamp);
+                        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                    }),
+                    datasets: [{
+                        label: 'Wait Time',
+                        data: chartData.map(d => d.wait_time),
+                        borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#4f46e5',
+                        pointBorderColor: isDark ? '#0f172a' : '#fff',
+                        pointBorderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { titleColor: textColor, bodyColor: textColor }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        },
+                        y: { 
+                            beginAtZero: true, 
+                            max: chartData.length > 0 ? Math.max(...chartData.map(d => d.wait_time)) + 10 : 100,
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        }
+                    }
+                }
+            });
+            
+            // Update daily stats
+            if (chartData.length > 0) {
+                const avg = (chartData.reduce((a, b) => a + b.wait_time, 0) / chartData.length).toFixed(1);
+                const min = Math.min(...chartData.map(d => d.wait_time));
+                const max = Math.max(...chartData.map(d => d.wait_time));
+                document.getElementById('dailyStats').textContent = `Average: ${avg} min | Min: ${min} min | Max: ${max} min | Samples: ${chartData.length}`;
+            } else {
+                document.getElementById('dailyStats').textContent = 'No data available for this date';
+            }
+            
+            // Create weekly chart
+            const weeklyCtx = document.getElementById('weeklyChart').getContext('2d');
+            if (window.weeklyChartInstance) {
+                window.weeklyChartInstance.destroy();
+            }
+            
+            const weeklyData = history.weekly || [];
+            window.weeklyChartInstance = new Chart(weeklyCtx, {
+                type: 'bar',
+                data: {
+                    labels: weeklyData.map((d, i) => {
+                        const date = new Date(d.date);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }),
+                    datasets: [{
+                        label: 'Avg Wait Time',
+                        data: weeklyData.map(d => d.avg),
+                        backgroundColor: '#4f46e5',
+                        borderColor: '#4338ca',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { titleColor: textColor, bodyColor: textColor }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        },
+                        y: { 
+                            beginAtZero: true, 
+                            max: Math.max(...weeklyData.map(d => d.avg)) + 10,
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        }
+                    }
+                }
+            });
+            
+            // Update weekly stats
+            if (weeklyData.length > 0) {
+                const avg = (weeklyData.reduce((a, b) => a + b.avg, 0) / weeklyData.length).toFixed(1);
+                const min = Math.min(...weeklyData.map(d => d.avg));
+                const max = Math.max(...weeklyData.map(d => d.avg));
+                document.getElementById('weeklyStats').textContent = `Average: ${avg} min | Min: ${min} min | Max: ${max} min | Days: ${weeklyData.length}`;
+            }
+        }
+
+        function updateLastUpdated() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+            });
+            document.getElementById('lastUpdated').textContent = timeStr;
+        }
+
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('contentState').classList.add('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        function showContent() {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('contentState').classList.remove('hidden');
+            document.getElementById('errorState').classList.add('hidden');
+        }
+
+        function showError(message) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('contentState').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message || 'Failed to load wait times. Please try again.';
+        }
+
+        function getRecommendedAttractions() {
+            if (!allData || !Array.isArray(allData)) return [];
+            
+            const attractions = [];
+            
+            allData.forEach(park => {
+                // Filter by selected park if not 'all'
+                if (currentFilter !== 'all') {
+                    const parkKey = getParkKey(park.name);
+                    if (parkKey !== currentFilter) return;
+                }
+                
+                const lands = park.lands || [];
+                lands.forEach(land => {
+                    const rides = land.rides || land.attractions || [];
+                    rides.forEach(ride => {
+                        // Skip blacklisted and closed attractions
+                        if (attractionBlacklist.includes(ride.name) || !ride.is_open) return;
+                        
+                        const currentWait = ride.wait_time || 0;
+                        const cacheKey = `${park.name}|${land.name}|${ride.id}`;
+                        const averages = rideAveragesCache[cacheKey];
+                        
+                        if (averages) {
+                            const dailyAvg = averages.today_avg || 0;
+                            const weeklyAvg = averages.weekly_avg || 0;
+                            const avgOfAverages = (dailyAvg + weeklyAvg) / 2;
+                            
+                            // Calculate how much better current time is vs average
+                            const improvement = avgOfAverages - currentWait;
+                            const improvementPercent = avgOfAverages > 0 ? (improvement / avgOfAverages) * 100 : 0;
+                            
+                            // Only include if significantly better than average
+                            if (improvement > 0) {
+                                attractions.push({
+                                    ride,
+                                    parkName: park.name,
+                                    landName: land.name,
+                                    currentWait,
+                                    dailyAvg,
+                                    weeklyAvg,
+                                    improvement,
+                                    improvementPercent
+                                });
+                            }
+                        }
+                    });
+                });
+            });
+            
+            // Sort by improvement percentage descending and return top 3
+            return attractions.sort((a, b) => b.improvementPercent - a.improvementPercent).slice(0, 3);
+        }
+
+        function showAllRecommendedAttractions() {
+            const allRecommended = getRecommendedAttractions();
+            
+            // Get ALL attractions below average (not just top 3)
+            if (!allData || !Array.isArray(allData)) return;
+            
+            const attractions = [];
+            
+            allData.forEach(park => {
+                // Filter by selected park if not 'all'
+                if (currentFilter !== 'all') {
+                    const parkKey = getParkKey(park.name);
+                    if (parkKey !== currentFilter) return;
+                }
+                
+                const lands = park.lands || [];
+                lands.forEach(land => {
+                    const rides = land.rides || land.attractions || [];
+                    rides.forEach(ride => {
+                        // Skip blacklisted and closed attractions
+                        if (attractionBlacklist.includes(ride.name) || !ride.is_open) return;
+                        
+                        const currentWait = ride.wait_time || 0;
+                        const cacheKey = `${park.name}|${land.name}|${ride.id}`;
+                        const averages = rideAveragesCache[cacheKey];
+                        
+                        if (averages) {
+                            const dailyAvg = averages.today_avg || 0;
+                            const weeklyAvg = averages.weekly_avg || 0;
+                            const avgOfAverages = (dailyAvg + weeklyAvg) / 2;
+                            
+                            // Calculate how much better current time is vs average
+                            const improvement = avgOfAverages - currentWait;
+                            const improvementPercent = avgOfAverages > 0 ? (improvement / avgOfAverages) * 100 : 0;
+                            
+                            // Only include if significantly better than average
+                            if (improvement > 0) {
+                                attractions.push({
+                                    ride,
+                                    parkName: park.name,
+                                    landName: land.name,
+                                    currentWait,
+                                    dailyAvg,
+                                    weeklyAvg,
+                                    improvement,
+                                    improvementPercent
+                                });
+                            }
+                        }
+                    });
+                });
+            });
+            
+            // Sort by improvement percentage descending
+            const sorted = attractions.sort((a, b) => b.improvementPercent - a.improvementPercent);
+            
+            // Display in modal
+            document.getElementById('viewMoreModal').classList.remove('hidden');
+            const viewMoreList = document.getElementById('viewMoreList');
+            viewMoreList.innerHTML = '';
+            
+            if (sorted.length === 0) {
+                viewMoreList.innerHTML = '<p class="text-center text-gray-600 dark:text-gray-400">No attractions below average right now.</p>';
+                return;
+            }
+            
+            sorted.forEach((attr, index) => {
+                const bgColor = index % 2 === 0 ? 'bg-white dark:bg-slate-700' : 'bg-slate-100 dark:bg-slate-900';
+                const item = document.createElement('div');
+                item.className = `${bgColor} rounded-lg p-4 cursor-pointer hover:shadow-md dark:hover:shadow-lg transition`;
+                
+                // Determine color based on improvement percentage
+                let waitTimeColor, improvementColor;
+                if (attr.improvementPercent >= 50) {
+                    // Excellent improvement (50%+)
+                    waitTimeColor = { light: '#16a34a', dark: '#4ade80' }; // green
+                    improvementColor = { light: '#16a34a', dark: '#4ade80' };
+                } else if (attr.improvementPercent >= 25) {
+                    // Good improvement (25-49%)
+                    waitTimeColor = { light: '#059669', dark: '#6ee7b7' }; // emerald
+                    improvementColor = { light: '#059669', dark: '#6ee7b7' };
+                } else {
+                    // Moderate improvement (0-24%)
+                    waitTimeColor = { light: '#ca8a04', dark: '#facc15' }; // yellow
+                    improvementColor = { light: '#ca8a04', dark: '#facc15' };
+                }
+                
+                const isDark = document.documentElement.classList.contains('dark');
+                const waitColor = isDark ? waitTimeColor.dark : waitTimeColor.light;
+                const impColor = isDark ? improvementColor.dark : improvementColor.light;
+                const cardBg = isDark ? (index % 2 === 0 ? '#475569' : '#1e293b') : (index % 2 === 0 ? '#ffffff' : '#f1f5f9');
+                
+                item.style.backgroundColor = cardBg;
+                item.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <p class="font-semibold text-slate-900 dark:text-white text-sm" style="color: ${isDark ? '#ffffff' : '#000000'};">${index + 1}. ${attr.ride.name}</p>
+                            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1" style="color: ${isDark ? '#cbd5e1' : '#475569'};">${attr.landName} • ${attr.parkName}</p>
+                        </div>
+                        <div class="text-right ml-4">
+                            <p class="font-bold" style="color: ${waitColor};">${attr.currentWait}min</p>
+                            <p class="text-xs" style="color: ${impColor};">↓${attr.improvementPercent.toFixed(0)}%</p>
+                        </div>
+                    </div>
+                `;
+                item.addEventListener('click', () => {
+                    document.getElementById('viewMoreModal').classList.add('hidden');
+                    showAttractionDetail(attr.ride, attr.parkName, attr.landName);
+                });
+                viewMoreList.appendChild(item);
+            });
+        }
+
+        function updateAllCardStyles(isDark) {
+            // Update all ride cards
+            document.querySelectorAll('.ride-card').forEach((card, index) => {
+                if (isDark) {
+                    const cardIndex = parseInt(card.dataset.cardIndex) || index % 2;
+                    card.style.backgroundColor = cardIndex % 2 === 0 ? '#1e293b' : '#0f172a';
+                    card.style.color = '#ffffff';
+                } else {
+                    card.style.backgroundColor = '';
+                    card.style.color = '';
+                }
+            });
+
+            // Update recommended list items
+            document.querySelectorAll('#recommendedList > div').forEach(item => {
+                if (isDark) {
+                    item.style.backgroundColor = '#475569';
+                    item.style.color = '#ffffff';
+                } else {
+                    item.style.backgroundColor = '';
+                    item.style.color = '';
+                }
+            });
+
+            // Update view more list items
+            document.querySelectorAll('#viewMoreList > div').forEach((item, index) => {
+                if (isDark) {
+                    item.style.backgroundColor = index % 2 === 0 ? '#475569' : '#1e293b';
+                    item.style.color = '#ffffff';
+                } else {
+                    item.style.backgroundColor = '';
+                    item.style.color = '';
+                }
+            });
+
+            // Update park containers
+            document.querySelectorAll('[class*="bg-white"][class*="dark:bg-slate"]').forEach(park => {
+                if (isDark) {
+                    park.style.backgroundColor = '#1a1f2e';
+                } else {
+                    park.style.backgroundColor = '';
+                }
+            });
+        }
+
+        function updateDarkModeIcon() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const sunIcon = document.getElementById('sunIcon');
+            const moonIcon = document.getElementById('moonIcon');
+            
+            if (isDark) {
+                // In dark mode, show sun icon (to switch to light mode)
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            } else {
+                // In light mode, show moon icon (to switch to dark mode)
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

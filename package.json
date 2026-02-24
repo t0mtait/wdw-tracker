@@ -1,0 +1,20 @@
+{
+  "name": "wdw-Tracker",
+  "version": "1.0.0",
+  "description": "Disney World Wait Times Tracker",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js"
+  },
+  "keywords": [
+    "disney",
+    "wait-times",
+    "tracker"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

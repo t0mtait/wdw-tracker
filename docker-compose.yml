@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  wdw-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wdw-tracker
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      # Mount the data directory for persistent storage of wait_times_history.json
+      - ./data:/app/data
+      # Keep wait_times_history.json in the app root for compatibility
+      - ./wait_times_history.json:/app/wait_times_history.json
+    restart: unless-stopped
+    # Optional: Add these for better resource management
+    # limits:
+    #   cpus: '0.5'
+    #   memory: 512M
+    # reservations:
+    #   cpus: '0.25'
+    #   memory: 256M
