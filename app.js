@@ -17,6 +17,17 @@ const parks = {
     8: 'Animal Kingdom'
 }
 
+/**
+ * Get local date string in YYYY-MM-DD format
+ * This fixes timezone issues where UTC date differs from local date
+ */
+function getLocalDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Database file for storing historical wait times
 const WAIT_TIMES_DB = path.join(__dirname, 'wait_times_history.json');
 
@@ -51,7 +62,7 @@ function saveWaitTimesHistory(history) {
  */
 function logWaitTimes(parksData) {
   const history = loadWaitTimesHistory();
-  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  const today = getLocalDateString(); // YYYY-MM-DD format in local time
   const timestamp = new Date().toISOString();
 
   if (!history[today]) {
@@ -248,7 +259,7 @@ app.get('/api/wait-times', async (req, res) => {
  */
 app.get('/api/average-wait-times', (req, res) => {
   try {
-    const date = req.query.date || new Date().toISOString().split('T')[0];
+    const date = req.query.date || getLocalDateString();
     console.log(`\n📊 API Request received for average wait times on ${date}`);
     
     const averages = getAverageWaitTimes(date);
@@ -343,7 +354,7 @@ app.get('/api/ride-averages', (req, res) => {
     }
     
     // Get today's average
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString();
     const todayAvg = rideWaitTimes.daily[today];
     
     res.json({
@@ -378,13 +389,16 @@ app.get('/api/ride-history', (req, res) => {
     
     const todayData = [];
     const weeklyData = [];
+    const historicalData = {};
     
     // Get last 7 days
     const last7Days = dates.slice(-7);
+    const today = getLocalDateString();
     
     last7Days.forEach(date => {
       const snapshots = history[date];
       const dayWaitTimes = [];
+      const dayTimestampedData = [];
       
       snapshots.forEach(snapshot => {
         const park = snapshot.parks.find(p => p.name === parkName);
@@ -397,15 +411,31 @@ app.get('/api/ride-history', (req, res) => {
         if (ride) {
           dayWaitTimes.push(ride.wait_time);
           
-          // Add to today's data if it's today
-          if (date === new Date().toISOString().split('T')[0]) {
-            todayData.push({
+          // Verify the timestamp actually belongs to this date (in local time)
+          const timestampDate = getLocalDateString(new Date(snapshot.timestamp));
+          
+          // Only include if timestamp's local date matches the expected date
+          if (timestampDate === date) {
+            dayTimestampedData.push({
               timestamp: snapshot.timestamp,
               wait_time: ride.wait_time
             });
+            
+            // Add to today's data if it's today
+            if (date === today) {
+              todayData.push({
+                timestamp: snapshot.timestamp,
+                wait_time: ride.wait_time
+              });
+            }
           }
         }
       });
+      
+      // Store historical data for each day
+      if (dayTimestampedData.length > 0) {
+        historicalData[date] = dayTimestampedData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      }
       
       // Calculate daily average for weekly chart
       if (dayWaitTimes.length > 0) {
@@ -423,7 +453,8 @@ app.get('/api/ride-history', (req, res) => {
       parkName,
       landName,
       today: todayData.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)),
-      weekly: weeklyData
+      weekly: weeklyData,
+      historical: historicalData
     });
   } catch (error) {
     console.error('API Error:', error);

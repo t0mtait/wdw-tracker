@@ -106,6 +106,13 @@
         .chart-container {
             @apply bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-900 dark:to-slate-800 rounded-xl p-5 shadow-sm dark:shadow-md border border-slate-200 dark:border-slate-700;
             position: relative;
+            min-height: 280px;
+        }
+        
+        @media (min-width: 640px) {
+            .chart-container {
+                min-height: 220px;
+            }
         }
 
         /* Explicit dark mode chart styling */
@@ -245,8 +252,8 @@
             <div class="max-w-2xl mx-auto px-4 py-4">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400 bg-clip-text text-transparent">🏰 WDW Queue Tracker</h1>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Made by @t0mtait</p>
+                        <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400 bg-clip-text text-transparent">🏰 Q Tracker</h1>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">By @t0mtait</p>
                     </div>
                     <div class="flex gap-2">
                         <button id="darkModeBtn" class="bg-gray-200 dark:bg-slate-800 text-gray-700 dark:text-gray-300 p-3 rounded-full hover:bg-gray-300 dark:hover:bg-slate-700 transition">
@@ -286,9 +293,9 @@
 
         <!-- Content -->
         <div id="contentState" class="hidden">
-            <div class="max-w-2xl mx-auto px-4 py-8 space-y-6">
+            <div class="max-w-2xl mx-auto px-4 space-y-6">
                 <!-- Last Updated -->
-                <div class="text-center text-xs text-gray-600 dark:text-gray-400 font-medium bg-transparent">
+                <div class="text-center text-xs text-gray-600 dark:text-gray-400 font-medium bg-transparent py-2">
                     Last updated: <span id="lastUpdated" class="text-indigo-600 dark:text-indigo-400 bg-transparent">just now</span>
                 </div>
 
@@ -371,13 +378,13 @@
                                 <button id="prevDayBtn" class="px-3 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">←</button>
                                 <h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center">
                                     <span class="w-2 h-2 bg-indigo-600 dark:bg-indigo-400 rounded-full mr-3"></span>
-                                    <span id="dailyChartDate">Today's Wait Times</span>
+                                    <span id="dailyChartDate">Today</span>
                                 </h3>
                                 <button id="nextDayBtn" class="px-3 py-2 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">→</button>
                             </div>
                         </div>
                         <div class="chart-container">
-                            <canvas id="dailyChart" height="80"></canvas>
+                            <canvas id="dailyChart" class="min-h-[250px] sm:min-h-[200px]" height="80"></canvas>
                         </div>
                         <p id="dailyStats" class="text-xs text-slate-600 dark:text-slate-400 mt-4 font-medium"></p>
                     </div>
@@ -389,7 +396,7 @@
                             Last 7 Days
                         </h3>
                         <div class="chart-container">
-                            <canvas id="weeklyChart" height="80"></canvas>
+                            <canvas id="weeklyChart" class="min-h-[250px] sm:min-h-[200px]" height="80"></canvas>
                         </div>
                         <p id="weeklyStats" class="text-xs text-slate-600 dark:text-slate-400 mt-4 font-medium"></p>
                     </div>
@@ -405,13 +412,27 @@
         let currentFilter = 'all';
         const rideAveragesCache = {}; // Cache for ride averages
 
+        /**
+         * Get local date string in YYYY-MM-DD format
+         * This fixes timezone issues where UTC date differs from local date
+         */
+        function getLocalDateString(date = new Date()) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
         // Blacklist of attraction names to hide from UI
         const attractionBlacklist = [
             'Kidcot Fun Stops',
+            'Walt Disney World Railroad - Fantasyland',
+            'Walt Disney World Railroad - Main Street, U.S.A.',
             'American Heritage Gallery',
             'Palais du Cinéma',
             'ImageWorks - The "What If" Labs',
             'Bijutsu-kan Gallery',
+            'Wildlife Express Train',
             'Gallery of Arts and History',
             'House of the Whispering Willows',
             'Mexico Folk Art Gallery',
@@ -615,18 +636,18 @@
                         const item = document.createElement('div');
                         item.className = 'bg-white dark:bg-slate-700 rounded-lg p-3 cursor-pointer hover:shadow-md dark:hover:shadow-lg transition';
                         
-                        // Determine color based on improvement percentage
+                        // Determine color based on improvement in minutes
                         let waitTimeColor, improvementColor;
-                        if (attr.improvementPercent >= 50) {
-                            // Excellent improvement (50%+)
+                        if (attr.improvement >= 30) {
+                            // Excellent improvement (30+ min)
                             waitTimeColor = { light: '#16a34a', dark: '#4ade80' }; // green
                             improvementColor = { light: '#16a34a', dark: '#4ade80' };
-                        } else if (attr.improvementPercent >= 25) {
-                            // Good improvement (25-49%)
+                        } else if (attr.improvement >= 15) {
+                            // Good improvement (15-29 min)
                             waitTimeColor = { light: '#059669', dark: '#6ee7b7' }; // emerald
                             improvementColor = { light: '#059669', dark: '#6ee7b7' };
                         } else {
-                            // Moderate improvement (0-24%)
+                            // Moderate improvement (0-14 min)
                             waitTimeColor = { light: '#ca8a04', dark: '#facc15' }; // yellow
                             improvementColor = { light: '#ca8a04', dark: '#facc15' };
                         }
@@ -643,7 +664,7 @@
                                 </div>
                                 <div class="text-right ml-3">
                                     <p class="font-bold text-sm" style="color: ${waitColor};">${attr.currentWait}min</p>
-                                    <p class="text-xs" style="color: ${impColor};">↓${attr.improvementPercent.toFixed(0)}%</p>
+                                    <p class="text-xs" style="color: ${impColor};">↓${Math.round(attr.improvement)}min</p>
                                 </div>
                             </div>
                         `;
@@ -680,10 +701,9 @@
 
             // Park Header
             const headerDiv = document.createElement('div');
-            headerDiv.className = 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-500 dark:via-purple-500 dark:to-pink-500 text-white p-6';
+            headerDiv.className = 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 dark:from-indigo-500 dark:via-purple-500 dark:to-pink-500 text-white p-4';
             headerDiv.innerHTML = `
                 <h2 class="text-xl font-semibold">${park.name}</h2>
-                <p class="text-indigo-100 text-sm mt-1">${lands.length} Areas</p>
             `;
             parkDiv.appendChild(headerDiv);
 
@@ -736,7 +756,7 @@
         async function createAttractionCard(ride, parkName, landName, index = 0) {
             const card = document.createElement('div');
             const bgColor = index % 2 === 0 ? 'bg-white dark:bg-slate-800' : 'bg-slate-100 dark:bg-slate-900';
-            card.className = `ride-card ${bgColor} rounded-lg p-2 hover:shadow-md dark:hover:shadow-lg dark:border dark:border-slate-600 active:scale-95 cursor-pointer`;
+            card.className = `ride-card ${bgColor} rounded-lg p-2 hover:shadow-md dark:hover:shadow-lg dark:border dark:border-slate-600 active:scale-95 cursor-pointer flex items-center justify-between`;
             
             // Store index for later dark mode styling
             card.dataset.cardIndex = index;
@@ -755,8 +775,7 @@
             const left = document.createElement('div');
             left.className = 'flex-1';
             left.innerHTML = `
-                <p class="font-semibold text-slate-900 dark:text-slate-100 text-sm">${ride.name}</p>
-                <p class="text-sm text-slate-600 dark:text-slate-400 mt-1">Status: <span class="font-medium ${statusClass} px-1.5 py-0.5 rounded inline-block text-xs">${statusText}</span></p>
+                <p class="font-semibold text-slate-900 dark:text-slate-100 text-xs">${ride.name}</p>
             `;
 
             const right = document.createElement('div');
@@ -765,7 +784,7 @@
             if (!isOpen) {
                 right.innerHTML = `<p class="text-slate-500 dark:text-slate-400 font-bold text-sm">CLOSED</p>`;
             } else {
-                let averageHTML = '';
+                let avgBadges = '';
                 try {
                     const cacheKey = `${parkName}|${landName}|${ride.id}`;
                     let averages = rideAveragesCache[cacheKey];
@@ -779,28 +798,68 @@
                     }
                     
                     if (averages) {
-                        let avgItems = [];
+                        let dailyBadge = '';
+                        let weeklyBadge = '';
+                        
                         if (averages.today_avg !== null) {
-                            const dailyColor = averages.today_avg > waitTime ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-                            avgItems.push(`<span class="font-bold ${dailyColor}">D:${averages.today_avg}m</span>`);
+                            const roundedDailyAvg = Math.round(averages.today_avg);
+                            const diff = roundedDailyAvg - waitTime;
+                            let bgColor, textColor;
+                            if (diff > 0) {
+                                // Current wait is better (lower) than average - green
+                                bgColor = 'bg-green-700 dark:bg-green-700';
+                                textColor = 'text-white';
+                            } else if (diff < 0) {
+                                // Current wait is worse (higher) than average - red
+                                bgColor = 'bg-red-700 dark:bg-red-700';
+                                textColor = 'text-white';
+                            } else {
+                                // Equal - yellow
+                                bgColor = 'bg-yellow-700 dark:bg-yellow-700';
+                                textColor = 'text-white';
+                            }
+                            dailyBadge = `<div class="${bgColor} ${textColor} rounded-lg shadow-md text-center flex flex-col justify-center w-10 h-10">
+                                <div class="text-[10px] opacity-75 leading-none">Day</div>
+                                <div class="text-xl font-bold leading-none mt-0.5">${roundedDailyAvg}</div>
+                            </div>`;
                         }
+                        
                         if (averages.weekly_avg !== null) {
-                            const weeklyColor = averages.weekly_avg > waitTime ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
-                            avgItems.push(`<span class="font-bold ${weeklyColor}">W:${averages.weekly_avg}m</span>`);
+                            const roundedWeeklyAvg = Math.round(averages.weekly_avg);
+                            const diff = roundedWeeklyAvg - waitTime;
+                            let bgColor, textColor;
+                            if (diff > 0) {
+                                // Current wait is better (lower) than average - green
+                                bgColor = 'bg-green-700 dark:bg-green-700';
+                                textColor = 'text-white';
+                            } else if (diff < 0) {
+                                // Current wait is worse (higher) than average - red
+                                bgColor = 'bg-red-700 dark:bg-red-700';
+                                textColor = 'text-white';
+                            } else {
+                                // Equal - yellow
+                                bgColor = 'bg-yellow-700 dark:bg-yellow-700';
+                                textColor = 'text-white';
+                            }
+                            weeklyBadge = `<div class="${bgColor} ${textColor} rounded-lg shadow-md text-center flex flex-col justify-center w-10 h-10">
+                                <div class="text-[10px] opacity-75 leading-none">Wk.</div>
+                                <div class="text-xl font-bold leading-none mt-0.5">${roundedWeeklyAvg}</div>
+                            </div>`;
                         }
-                        if (avgItems.length > 0) {
-                            averageHTML = `<p class="text-sm space-x-1 font-semibold">${avgItems.join('&nbsp;&nbsp;')}</p>`;
-                        }
+                        
+                        avgBadges = weeklyBadge + dailyBadge;
                     }
                 } catch (error) {
-                    console.error('Error fetching ride averages:', error);
+                    console.error('Error processing averages:', error);
                 }
                 
                 right.innerHTML = `
-                    <div class="flex flex-col items-end gap-0">
-                        <p class="text-indigo-600 dark:text-indigo-400 font-bold text-2xl">${waitTime}</p>
-                        <p class="text-sm text-slate-600 dark:text-slate-400 leading-tight">min</p>
-                        ${averageHTML}
+                    <div class="flex gap-1.5 items-center">
+                        ${avgBadges}
+                        <div class="bg-gradient-to-br from-indigo-500 to-purple-600 dark:from-indigo-600 dark:to-purple-700 text-white rounded-lg shadow-md text-center flex flex-col justify-center w-12 h-12">
+                            <div class="text-[10px] opacity-75 leading-none">Now</div>
+                            <div class="text-xl font-bold leading-none mt-0.5">${waitTime}</div>
+                        </div>
                     </div>
                 `;
             }
@@ -840,7 +899,7 @@
                     // Store history and current selection in modal
                     window.currentModalHistory = history;
                     window.currentModalData = data;
-                    window.currentSelectedDate = new Date().toISOString().split('T')[0];
+                    window.currentSelectedDate = getLocalDateString();
                     window.currentRideId = ride.id;
                     
                     // Set up date navigation
@@ -859,18 +918,18 @@
             const nextBtn = document.getElementById('nextDayBtn');
             
             prevBtn.onclick = () => {
-                const currentDate = new Date(window.currentSelectedDate);
+                const currentDate = new Date(window.currentSelectedDate + 'T00:00:00');
                 currentDate.setDate(currentDate.getDate() - 1);
-                window.currentSelectedDate = currentDate.toISOString().split('T')[0];
+                window.currentSelectedDate = getLocalDateString(currentDate);
                 createCharts(window.currentModalHistory, window.currentModalData, window.currentSelectedDate);
             };
             
             nextBtn.onclick = () => {
-                const today = new Date().toISOString().split('T')[0];
+                const today = getLocalDateString();
                 if (window.currentSelectedDate < today) {
-                    const currentDate = new Date(window.currentSelectedDate);
+                    const currentDate = new Date(window.currentSelectedDate + 'T00:00:00');
                     currentDate.setDate(currentDate.getDate() + 1);
-                    window.currentSelectedDate = currentDate.toISOString().split('T')[0];
+                    window.currentSelectedDate = getLocalDateString(currentDate);
                     createCharts(window.currentModalHistory, window.currentModalData, window.currentSelectedDate);
                 }
             };
@@ -881,7 +940,7 @@
          */
         function createCharts(history, averages, selectedDate = null) {
             // Prepare daily data
-            const today = new Date().toISOString().split('T')[0];
+            const today = getLocalDateString();
             const dateToDisplay = selectedDate || today;
             
             // Get data for selected date
@@ -901,11 +960,11 @@
             const dateDisplayElement = document.getElementById('dailyChartDate');
             if (dateDisplayElement) {
                 if (dateToDisplay === today) {
-                    dateDisplayElement.textContent = "Today's Wait Times";
+                    dateDisplayElement.textContent = "Today";
                 } else {
                     const displayDate = new Date(dateToDisplay + 'T00:00:00');
                     const dateStr = displayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                    dateDisplayElement.textContent = `Wait Times - ${dateStr}`;
+                    dateDisplayElement.textContent = `${dateStr}`;
                 }
             }
             
@@ -941,7 +1000,7 @@
                         backgroundColor: 'rgba(79, 70, 229, 0.1)',
                         tension: 0.4,
                         fill: true,
-                        pointRadius: 4,
+                        pointRadius: 0,
                         pointBackgroundColor: '#4f46e5',
                         pointBorderColor: isDark ? '#0f172a' : '#fff',
                         pointBorderWidth: 2
@@ -949,7 +1008,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     plugins: { 
                         legend: { display: false },
                         tooltip: { titleColor: textColor, bodyColor: textColor }
@@ -1003,7 +1062,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true,
+                    maintainAspectRatio: false,
                     plugins: { 
                         legend: { display: false },
                         tooltip: { titleColor: textColor, bodyColor: textColor }
@@ -1111,8 +1170,8 @@
                 });
             });
             
-            // Sort by improvement percentage descending and return top 3
-            return attractions.sort((a, b) => b.improvementPercent - a.improvementPercent).slice(0, 3);
+            // Sort by improvement (minutes) descending and return top 3
+            return attractions.sort((a, b) => b.improvement - a.improvement).slice(0, 3);
         }
 
         function showAllRecommendedAttractions() {
@@ -1168,8 +1227,8 @@
                 });
             });
             
-            // Sort by improvement percentage descending
-            const sorted = attractions.sort((a, b) => b.improvementPercent - a.improvementPercent);
+            // Sort by improvement (minutes) descending
+            const sorted = attractions.sort((a, b) => b.improvement - a.improvement);
             
             // Display in modal
             document.getElementById('viewMoreModal').classList.remove('hidden');
@@ -1186,18 +1245,18 @@
                 const item = document.createElement('div');
                 item.className = `${bgColor} rounded-lg p-4 cursor-pointer hover:shadow-md dark:hover:shadow-lg transition`;
                 
-                // Determine color based on improvement percentage
+                // Determine color based on improvement in minutes
                 let waitTimeColor, improvementColor;
-                if (attr.improvementPercent >= 50) {
-                    // Excellent improvement (50%+)
+                if (attr.improvement >= 30) {
+                    // Excellent improvement (30+ min)
                     waitTimeColor = { light: '#16a34a', dark: '#4ade80' }; // green
                     improvementColor = { light: '#16a34a', dark: '#4ade80' };
-                } else if (attr.improvementPercent >= 25) {
-                    // Good improvement (25-49%)
+                } else if (attr.improvement >= 15) {
+                    // Good improvement (15-29 min)
                     waitTimeColor = { light: '#059669', dark: '#6ee7b7' }; // emerald
                     improvementColor = { light: '#059669', dark: '#6ee7b7' };
                 } else {
-                    // Moderate improvement (0-24%)
+                    // Moderate improvement (0-14 min)
                     waitTimeColor = { light: '#ca8a04', dark: '#facc15' }; // yellow
                     improvementColor = { light: '#ca8a04', dark: '#facc15' };
                 }
@@ -1216,7 +1275,7 @@
                         </div>
                         <div class="text-right ml-4">
                             <p class="font-bold" style="color: ${waitColor};">${attr.currentWait}min</p>
-                            <p class="text-xs" style="color: ${impColor};">↓${attr.improvementPercent.toFixed(0)}%</p>
+                            <p class="text-xs" style="color: ${impColor};">↓${Math.round(attr.improvement)}min</p>
                         </div>
                     </div>
                 `;
