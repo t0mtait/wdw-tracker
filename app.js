@@ -28,6 +28,21 @@ function getLocalDateString(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Get local date string in a specific timezone
+ * tzOffsetMinutes: client's timezone offset in minutes (from getTimezoneOffset())
+ */
+function getLocalDateStringInTimezone(utcTimestamp, tzOffsetMinutes) {
+  const utcDate = new Date(utcTimestamp);
+  // Adjust UTC time by client's timezone offset to get their local time
+  const adjustedTime = new Date(utcDate.getTime() - tzOffsetMinutes * 60 * 1000);
+  
+  const year = adjustedTime.getUTCFullYear();
+  const month = String(adjustedTime.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(adjustedTime.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // Database file for storing historical wait times
 const WAIT_TIMES_DB = path.join(__dirname, 'wait_times_history.json');
 
@@ -238,15 +253,29 @@ function fetchUrl(url) {
 // API endpoint for wait times
 app.get('/api/wait-times', async (req, res) => {
   try {
-    console.log('\n📡 API Request received for wait times');
-    const data = await fetchDisneyWaitTimes();
+    console.log('\n📡 API Request received for wait times (reading from cache)');
     
-    console.log('\n✅ API Response:');
-   // console.log(JSON.stringify(data, null, 2));
+    // Load the most recent wait times from history instead of fetching from Disney API
+    const history = loadWaitTimesHistory();
+    const dates = Object.keys(history).sort();
     
-    // Log the wait times to history
-    logWaitTimes(data);
+    if (dates.length === 0) {
+      return res.json([]); // No data available yet
+    }
     
+    // Get the most recent date's last snapshot
+    const latestDate = dates[dates.length - 1];
+    const snapshots = history[latestDate];
+    
+    if (!snapshots || snapshots.length === 0) {
+      return res.json([]); // No snapshots for latest date
+    }
+    
+    // Return the most recent snapshot's data
+    const latestSnapshot = snapshots[snapshots.length - 1];
+    const data = latestSnapshot.parks;
+    
+    console.log('\n✅ API Response (from cache):');
     res.json(data);
   } catch (error) {
     console.error('API Error:', error);
@@ -378,7 +407,8 @@ app.get('/api/ride-averages', (req, res) => {
  */
 app.get('/api/ride-history', (req, res) => {
   try {
-    const { rideId, parkName, landName } = req.query;
+    const { rideId, parkName, landName, tzOffset } = req.query;
+    const tzOffsetMinutes = tzOffset ? parseInt(tzOffset) : 0;
     
     if (!rideId || !parkName || !landName) {
       return res.status(400).json({ error: 'Missing required params: rideId, parkName, landName' });
@@ -409,13 +439,13 @@ app.get('/api/ride-history', (req, res) => {
         
         const ride = land.rides.find(r => r.id === parseInt(rideId));
         if (ride) {
-          dayWaitTimes.push(ride.wait_time);
+          // Check if timestamp's local date matches the date we're collecting for (in client's timezone)
+          const timestampLocalDate = getLocalDateStringInTimezone(snapshot.timestamp, tzOffsetMinutes);
           
-          // Verify the timestamp actually belongs to this date (in local time)
-          const timestampDate = getLocalDateString(new Date(snapshot.timestamp));
-          
-          // Only include if timestamp's local date matches the expected date
-          if (timestampDate === date) {
+          // Only include this sample if the timestamp actually falls on this date in client's local time
+          if (timestampLocalDate === date) {
+            dayWaitTimes.push(ride.wait_time);
+            
             dayTimestampedData.push({
               timestamp: snapshot.timestamp,
               wait_time: ride.wait_time
@@ -471,4 +501,30 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Disney World Wait Times Server running on http://localhost:${PORT}`);
   console.log(`📱 Open your browser and navigate to http://localhost:${PORT}`);
+  
+  // Start background job to collect wait times every 5 minutes
+  console.log('⏰ Starting automatic wait times collection every 5 minutes...');
+  
+  // Collect immediately on startup
+  collectWaitTimes();
+  
+  // Then collect every 5 minutes (300,000 milliseconds)
+  setInterval(collectWaitTimes, 300000);
 });
+
+/**
+ * Background job to collect and log wait times
+ */
+async function collectWaitTimes() {
+  try {
+    const timestamp = new Date().toISOString();
+    console.log(`\n📊 [${timestamp}] Collecting wait times...`);
+    
+    const data = await fetchDisneyWaitTimes();
+    logWaitTimes(data);
+    
+    console.log(`✅ [${timestamp}] Wait times collected successfully`);
+  } catch (error) {
+    console.error(`❌ [${new Date().toISOString()}] Error collecting wait times:`, error.message);
+  }
+}
