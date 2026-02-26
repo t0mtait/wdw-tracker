@@ -954,6 +954,9 @@
                 chartData = history.historical[dateToDisplay] || [];
             }
             
+            // Filter to only show open rides in the chart (exclude closed rides with 0 wait time)
+            const openChartData = chartData.filter(d => d.is_open !== false);
+            
             // Detect dark mode
             const isDark = document.documentElement.classList.contains('dark');
             const textColor = isDark ? '#ffffff' : '#334155';
@@ -989,13 +992,71 @@
                 window.dailyChartInstance.destroy();
             }
             
+            // Create chart with closure shading plugin
+            const closureShadingPlugin = {
+                id: 'closedPeriodShading',
+                beforeDatasetsDraw: (chart) => {
+                    const ctx = chart.ctx;
+                    const xAxis = chart.scales.x;
+                    const yAxis = chart.scales.y;
+                    
+                    if (!xAxis || !yAxis || chartData.length === 0) return;
+                    
+                    // Find all closed periods
+                    let i = 0;
+                    while (i < chartData.length) {
+                        // Find start of a closed period
+                        if (chartData[i].is_open === false) {
+                            // Look back for the last open sample before this closed period
+                            let closedStart;
+                            if (i > 0 && chartData[i - 1].is_open !== false) {
+                                // Start shading from the last open sample
+                                closedStart = new Date(chartData[i - 1].timestamp).getTime();
+                            } else {
+                                // No previous open sample, start from first closed sample
+                                closedStart = new Date(chartData[i].timestamp).getTime();
+                            }
+                            
+                            // Find end of this closed period
+                            let j = i;
+                            while (j < chartData.length && chartData[j].is_open === false) {
+                                j++;
+                            }
+                            
+                            // Determine where to end the red shading
+                            let closedEnd;
+                            if (j < chartData.length) {
+                                // There's an open sample after - shade to that timestamp
+                                closedEnd = new Date(chartData[j].timestamp).getTime();
+                            } else {
+                                // Still closed at the end - shade to last closed sample
+                                closedEnd = new Date(chartData[j - 1].timestamp).getTime();
+                            }
+                            
+                            // Draw red shaded rectangle for this closed period
+                            const startX = xAxis.getPixelForValue(closedStart);
+                            const endX = xAxis.getPixelForValue(closedEnd);
+                            
+                            ctx.save();
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+                            ctx.fillRect(startX, yAxis.top, endX - startX, yAxis.bottom - yAxis.top);
+                            ctx.restore();
+                            
+                            i = j; // Move to next section
+                        } else {
+                            i++;
+                        }
+                    }
+                }
+            };
+            
             window.dailyChartInstance = new Chart(dailyCtx, {
                 type: 'line',
                 data: {
-                    labels: chartData.map(d => new Date(d.timestamp)), // Use actual timestamps instead of formatted strings
+                    labels: openChartData.map(d => new Date(d.timestamp)), // Use actual timestamps instead of formatted strings
                     datasets: [{
                         label: 'Wait Time',
-                        data: chartData.map(d => d.wait_time),
+                        data: openChartData.map(d => d.wait_time),
                         borderColor: '#4f46e5',
                         backgroundColor: 'rgba(79, 70, 229, 0.1)',
                         tension: 0.4,
@@ -1006,6 +1067,7 @@
                         pointBorderWidth: 2
                     }]
                 },
+                plugins: [closureShadingPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1036,6 +1098,9 @@
                                     hour: 'h:00 a'
                                 }
                             },
+                            // Set min/max to include all samples (open and closed) for proper range
+                            min: chartData.length > 0 ? new Date(chartData[0].timestamp) : undefined,
+                            max: chartData.length > 0 ? new Date(chartData[chartData.length - 1].timestamp) : undefined,
                             ticks: { 
                                 color: textColor,
                                 maxRotation: 0
@@ -1044,7 +1109,7 @@
                         },
                         y: { 
                             beginAtZero: true, 
-                            max: chartData.length > 0 ? Math.max(...chartData.map(d => d.wait_time)) + 10 : 100,
+                            max: openChartData.length > 0 ? Math.max(...openChartData.map(d => d.wait_time)) + 10 : 100,
                             ticks: { color: textColor },
                             grid: { color: gridColor }
                         }
@@ -1052,12 +1117,12 @@
                 }
             });
             
-            // Update daily stats
-            if (chartData.length > 0) {
-                const avg = (chartData.reduce((a, b) => a + b.wait_time, 0) / chartData.length).toFixed(1);
-                const min = Math.min(...chartData.map(d => d.wait_time));
-                const max = Math.max(...chartData.map(d => d.wait_time));
-                document.getElementById('dailyStats').textContent = `Average: ${avg} min | Min: ${min} min | Max: ${max} min | Samples: ${chartData.length}`;
+            // Update daily stats (using only open rides)
+            if (openChartData.length > 0) {
+                const avg = (openChartData.reduce((a, b) => a + b.wait_time, 0) / openChartData.length).toFixed(1);
+                const min = Math.min(...openChartData.map(d => d.wait_time));
+                const max = Math.max(...openChartData.map(d => d.wait_time));
+                document.getElementById('dailyStats').textContent = `Avg: ${avg} min | Min: ${min} min | Max: ${max} min | N: ${openChartData.length}`;
             } else {
                 document.getElementById('dailyStats').textContent = 'No data available for this date';
             }
@@ -1111,7 +1176,7 @@
                 const avg = (weeklyData.reduce((a, b) => a + b.avg, 0) / weeklyData.length).toFixed(1);
                 const min = Math.min(...weeklyData.map(d => d.avg));
                 const max = Math.max(...weeklyData.map(d => d.avg));
-                document.getElementById('weeklyStats').textContent = `Average: ${avg} min | Min: ${min} min | Max: ${max} min | Days: ${weeklyData.length}`;
+                document.getElementById('weeklyStats').textContent = `Avg: ${avg} min | Min: ${min} min | Max: ${max} min | D: ${weeklyData.length}`;
             }
         }
 

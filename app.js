@@ -84,7 +84,7 @@ function logWaitTimes(parksData) {
     history[today] = [];
   }
 
-  // Extract wait times for each ride (only open rides)
+  // Extract wait times for each ride (include all rides, both open and closed)
   const snapshot = {
     timestamp,
     parks: parksData.map(park => ({
@@ -93,15 +93,14 @@ function logWaitTimes(parksData) {
       lands: park.lands.map(land => ({
         name: land.name,
         rides: land.rides
-          .filter(ride => ride.is_open) // Only include open rides
           .map(ride => ({
             id: ride.id,
             name: ride.name,
             wait_time: ride.wait_time,
             is_open: ride.is_open
           }))
-      })).filter(land => land.rides.length > 0) // Only include lands with open rides
-    })).filter(park => park.lands.length > 0) // Only include parks with open rides
+      })).filter(land => land.rides.length > 0) // Only include lands with rides
+    })).filter(park => park.lands.length > 0) // Only include parks with lands
   };
 
   // Only save snapshot if there are open rides
@@ -444,18 +443,23 @@ app.get('/api/ride-history', (req, res) => {
           
           // Only include this sample if the timestamp actually falls on this date in client's local time
           if (timestampLocalDate === date) {
-            dayWaitTimes.push(ride.wait_time);
+            // Only include wait time for open rides (closed rides have wait_time: 0 which skews averages)
+            if (ride.is_open) {
+              dayWaitTimes.push(ride.wait_time);
+            }
             
             dayTimestampedData.push({
               timestamp: snapshot.timestamp,
-              wait_time: ride.wait_time
+              wait_time: ride.wait_time,
+              is_open: ride.is_open
             });
             
             // Add to today's data if it's today
             if (date === today) {
               todayData.push({
                 timestamp: snapshot.timestamp,
-                wait_time: ride.wait_time
+                wait_time: ride.wait_time,
+                is_open: ride.is_open
               });
             }
           }
