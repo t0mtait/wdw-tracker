@@ -31,6 +31,8 @@
         });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.0.0/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -892,7 +894,8 @@
                 const data = await response.json();
                 
                 // Fetch detailed history for charts
-                const historyResponse = await fetch(`/api/ride-history?rideId=${ride.id}&parkName=${parkName}&landName=${landName}`);
+                const tzOffset = new Date().getTimezoneOffset();
+                const historyResponse = await fetch(`/api/ride-history?rideId=${ride.id}&parkName=${parkName}&landName=${landName}&tzOffset=${tzOffset}`);
                 if (historyResponse.ok) {
                     const history = await historyResponse.json();
                     
@@ -989,10 +992,7 @@
             window.dailyChartInstance = new Chart(dailyCtx, {
                 type: 'line',
                 data: {
-                    labels: chartData.map((d, i) => {
-                        const date = new Date(d.timestamp);
-                        return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                    }),
+                    labels: chartData.map(d => new Date(d.timestamp)), // Use actual timestamps instead of formatted strings
                     datasets: [{
                         label: 'Wait Time',
                         data: chartData.map(d => d.wait_time),
@@ -1011,11 +1011,35 @@
                     maintainAspectRatio: false,
                     plugins: { 
                         legend: { display: false },
-                        tooltip: { titleColor: textColor, bodyColor: textColor }
+                        tooltip: { 
+                            titleColor: textColor, 
+                            bodyColor: textColor,
+                            callbacks: {
+                                title: function(context) {
+                                    const date = new Date(context[0].label);
+                                    const hours = date.getHours();
+                                    const minutes = date.getMinutes();
+                                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                                    const displayHours = hours % 12 || 12;
+                                    return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                                }
+                            }
+                        }
                     },
                     scales: {
                         x: {
-                            ticks: { color: textColor },
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                stepSize: 1,
+                                displayFormats: {
+                                    hour: 'h:00 a'
+                                }
+                            },
+                            ticks: { 
+                                color: textColor,
+                                maxRotation: 0
+                            },
                             grid: { color: gridColor }
                         },
                         y: { 
@@ -1074,7 +1098,7 @@
                         },
                         y: { 
                             beginAtZero: true, 
-                            max: Math.max(...weeklyData.map(d => d.avg)) + 10,
+                            max: weeklyData.length > 0 ? Math.max(...weeklyData.map(d => d.avg)) + 10 : 100,
                             ticks: { color: textColor },
                             grid: { color: gridColor }
                         }
@@ -1300,25 +1324,21 @@
                 }
             });
 
-            // Update recommended list items
+            // Update recommended list items (colors are handled by inline styles on p tags)
             document.querySelectorAll('#recommendedList > div').forEach(item => {
                 if (isDark) {
                     item.style.backgroundColor = '#475569';
-                    item.style.color = '#ffffff';
                 } else {
                     item.style.backgroundColor = '';
-                    item.style.color = '';
                 }
             });
 
-            // Update view more list items
+            // Update view more list items (colors are handled by inline styles on p tags)
             document.querySelectorAll('#viewMoreList > div').forEach((item, index) => {
                 if (isDark) {
                     item.style.backgroundColor = index % 2 === 0 ? '#475569' : '#1e293b';
-                    item.style.color = '#ffffff';
                 } else {
                     item.style.backgroundColor = '';
-                    item.style.color = '';
                 }
             });
 
